@@ -23,8 +23,8 @@ defmodule Exkit.Paginator do
       total: cnt,
       total_pages: ceil(cnt / page_size),
       total_entries: cnt,
-      has_next?: length(entries) >= page_size,
-      has_prev?: page_number > 1
+      has_next: length(entries) >= page_size,
+      has_prev: page_number > 1
     }
 
     {entries, paginator}
