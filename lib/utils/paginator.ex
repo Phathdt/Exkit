@@ -2,53 +2,62 @@ defmodule Exkit.Paginator do
   @moduledoc """
   Exkit.Paginator
   """
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query
 
-  @default_values %{page: 1, size: 20}
-  def default_values, do: @default_values
+  def paginate(query, params, repo, opts \\ []) do
+    page_number = (Map.get(params, "page") || Map.get(params, :page) || 1) |> to_int
+    page_size = (Map.get(params, "size") || Map.get(params, :size) || 20) |> to_int
+    entries = entries(query, page_number, page_size, repo)
+    total? = Map.get(params, "count_total") || Keyword.get(opts, :count_total, false)
 
-  @default_types %{
-    page: :integer,
-    size: :integer
-  }
-  def default_types, do: @default_types
+    cnt =
+      if total? do
+        count_entry(query, repo)
+      else
+        0
+      end
 
-  defstruct Map.to_list(@default_values)
+    paginator = %{
+      page: page_number,
+      size: page_size,
+      total: cnt,
+      total_pages: ceil(cnt / page_size),
+      total_entries: cnt,
+      has_next?: length(entries) >= page_size,
+      has_prev?: page_number > 1
+    }
 
-  def __changeset__, do: @default_types
-
-  def validate(changeset) do
-    changeset
-    |> Ecto.Changeset.validate_number(:page, greater_than_or_equal_to: 1)
-    |> Ecto.Changeset.validate_number(:size, less_than_or_equal_to: 100)
-    |> Ecto.Changeset.validate_number(:size, greater_than_or_equal_to: 1)
+    {entries, paginator}
   end
 
-  def changeset(model, params \\ %{}) do
-    model
-    |> Ecto.Changeset.cast(params, Map.keys(@default_values))
-    |> validate()
+  defp entries(query, page_number, page_size, repo) do
+    offset = page_size * (page_number - 1)
+
+    query
+    |> limit(^page_size)
+    |> offset(^offset)
+    |> repo.all()
   end
 
-  def cast(params \\ %{}) do
-    changeset(%__MODULE__{}, params) |> validate()
+  defp count_entry(query, repo) do
+    query
+    |> exclude(:order_by)
+    |> exclude(:preload)
+    |> exclude(:select)
+    |> select(
+      [e],
+      fragment(
+        "count(distinct ?)",
+        e.id
+      )
+    )
+    |> repo.one()
   end
 
-  def new(query, repo, params) do
-    changesetz = changeset(%__MODULE__{}, params)
-
-    with {:ok, data} <- Exkit.Validator.check_and_apply_changes(changesetz) do
-      total_entries = repo.aggregate(query, :count, :id)
-      offset = data.size * (data.page - 1)
-      entries = from(i in query, limit: ^data.size, offset: ^offset) |> repo.all()
-
-      %{
-        entries: entries,
-        page: data.page,
-        size: data.size,
-        total_entries: total_entries,
-        total_pages: Float.ceil(total_entries / data.size) |> round()
-      }
+  defp to_int(s) do
+    case Ecto.Type.cast(:integer, s) do
+      {:ok, value} -> value
+      :error -> :error
     end
   end
 end

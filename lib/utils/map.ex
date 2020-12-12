@@ -1,4 +1,4 @@
-defmodule Eshop.Map do
+defmodule Exkit.Map do
   @moduledoc """
   obj =
     %{
